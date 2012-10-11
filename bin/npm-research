@@ -68,8 +68,11 @@ function processInfo(packages) {
             }
           }
         }
+
+        if (repo)
+          repo = vcsurl(repo);
         
-        var page = homepage || vcsurl(repo);
+        var page = homepage || repo;
         if (page) {
           console.log(util.format('  Opening %s...',colors.blue(page)))
           open(page)
