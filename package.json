@@ -1,0 +1,35 @@
+{
+  "name": "npm-research",
+  "version": "0.0.1",
+  "description": "",
+  "homepage": [
+    ""
+  ],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": [],
+  "author": "JP Richardson <jprichardson@gmail.com>",
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": ""
+    }
+  ],
+  "dependencies": {
+    "open": "0.0.2",
+    "request": "~2.11.4",
+    "colors": "~0.6.0-1",
+    "batchflow": "~0.2.0",
+    "vcsurl": "0.0.1"
+  },
+  "devDepdencies": {},
+  "scripts": {
+    "test": "mocha test"
+  },
+  "bin": {
+    "npm-research": "./bin/npm-research"
+  },
+  "preferGlobal": true
+}

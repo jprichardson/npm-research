@@ -1,0 +1,100 @@
+#!/usr/bin/env node
+
+var request = require('request')
+  , open = require('open')
+  , util = require('util')
+  , colors = require('colors')
+  , S = require('string')
+  , exec = require('child_process').exec
+  , path = require('path')
+  , fs = require('fs')
+  , batch = require('batchflow')
+  , vcsurl = require('vcsurl')
+
+var NPM_URL = "http://registry.npmjs.org/%s";
+
+function main() {
+  if (process.argv.length < 3) {
+    displayHelp()
+  } else {
+    keywords = process.argv.slice(2);
+    console.log('Searching...\n')
+    exec('npm search ' + keywords.join(' '), function(err, stdout, stderr) {
+      var lines = S(stdout.trim()).lines();
+      if (lines.length < 2)
+        console.log("No match found.")
+      else 
+        processResults(lines);
+    })
+  }
+}
+
+function processResults(lines){
+  var len = lines[0].indexOf('DESCRIPTION')
+    , packages = [];
+
+  lines.splice(0,1);
+  for (var i = 0; i < lines.length; ++i) {
+    var url = S(lines[i]).left(len).trim().s;
+    if (url) {
+      url = util.format(NPM_URL, url);
+      packages.push(url);
+    }
+  }
+
+  processInfo(packages);
+}
+
+function processInfo(packages) {
+  //console.log(packages)
+  batch(packages).seq().each(function(i, url, next) {
+    //console.log(util.format('Processing %s...',url))
+    request({url: url, json: true}, function(err, resp, body) {
+      if (err) console.log(util.format('Error on %s: %s', url, err.message));
+      if (resp.statusCode !== 200) console.log(util.format('Expected 200 for %s, got %s', url, resp.statusCode))
+      if (!err) {
+        var repo = null
+          , homepage = null;
+
+        if (body.repository) repo = body.repository.url;
+        if (body['dist-tags']) {
+          var latest = body['dist-tags'].latest;
+          if (latest && body.versions) {
+            var latestObj = body.versions[latest]
+            if (latestObj) {
+              if (latestObj.homepage && util.isArray(latestObj.homepage) && latestObj.homepage.length > 0) {
+                homepage = latestObj.homepage[0];
+              }
+            }
+          }
+        }
+        
+        var page = homepage || vcsurl(repo);
+        if (page) {
+          console.log(util.format('  Opening %s...',colors.blue(page)))
+          open(page)
+        }
+      }
+      next();
+    })
+  }).end(function() {
+    console.log('\nDone.')
+  })
+}
+
+function displayHelp() {
+  var packageJson = path.join(__dirname, '../package.json');
+  if (fs.existsSync(packageJson)) {
+    var packageConf = require(packageJson);
+    console.log("");
+    console.log(colors.bold("  npm-research [%s]"), packageConf.version);
+    console.log("");
+    console.log("    Usage: npm-research [some search terms...]");
+    console.log("");
+
+  } else {
+    console.log("Can't locate package.json. Can't display help.");
+  }
+}
+
+main()
