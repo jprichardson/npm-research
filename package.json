@@ -9,7 +9,15 @@
     "type": "git",
     "url": ""
   },
-  "keywords": ["npm","github","bitbucket","research","search","package","packages"],
+  "keywords": [
+    "npm",
+    "github",
+    "bitbucket",
+    "research",
+    "search",
+    "package",
+    "packages"
+  ],
   "author": "JP Richardson <jprichardson@gmail.com>",
   "licenses": [
     {
@@ -22,7 +30,8 @@
     "request": "~2.11.4",
     "colors": "~0.6.0-1",
     "batchflow": "~0.2.0",
-    "vcsurl": "0.0.1"
+    "vcsurl": "0.0.1",
+    "string": "~1.1.0"
   },
   "devDepdencies": {},
   "scripts": {
