@@ -1,7 +1,7 @@
 {
   "name": "npm-research",
   "version": "0.0.1",
-  "description": "",
+  "description": "Nice little utility to help you research NPM packages.",
   "homepage": [
     ""
   ],
@@ -9,7 +9,7 @@
     "type": "git",
     "url": ""
   },
-  "keywords": [],
+  "keywords": ["npm","github","bitbucket","research","search","package","packages"],
   "author": "JP Richardson <jprichardson@gmail.com>",
   "licenses": [
     {

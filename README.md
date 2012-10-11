@@ -23,7 +23,6 @@ Usage
 
     $ npm-research
 
-
     npm-research [0.0.1]
 
       Usage: npm-research [some search terms...]
