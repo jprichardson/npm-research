@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+//this is pretty hairy, should be refactored
+
 var request = require('request')
   , open = require('open')
   , util = require('util')
@@ -7,17 +9,42 @@ var request = require('request')
   , S = require('string')
   , exec = require('child_process').exec
   , path = require('path')
-  , fs = require('fs')
+  , fs = require('fs-extra')
+  , path = require('path-extra')
   , batch = require('batchflow')
   , vcsurl = require('vcsurl')
+  , cheerio = require('cheerio')
+  , ms = require('ms')
+  , opt = require('optimist')
 
-var NPM_URL = "http://registry.npmjs.org/%s";
+var noop = function(){};
+fs.jsonfile.spaces = 2;
+var argv = {};
+var DEBUG = false;
+
+//data vals
+var NPM_URL = "https://npmjs.org/package/%s"
+  , DATA_DIR = path.join(path.homedir(), '.npm-research')
+  , DATA_FILE = path.join(DATA_DIR, 'packages.json')
+  , PACKAGES = {}
+  , UPDATE_SPAN = ms('2 days')
+
+//formatting vals
+var PKG_WIDTH = 25
+  , DEP_WIDTH = 6
+  , DESC_WIDTH = process.stdout.columns - PKG_WIDTH - DEP_WIDTH - 9 //the 9 has no significance
+
 
 function main() {
-  if (process.argv.length < 3) {
+   argv = opt
+    .alias('b', 'browser')
+    .alias('g', 'gte')
+    .argv;
+
+  if (argv._.length === 0) {
     displayHelp()
   } else {
-    keywords = process.argv.slice(2);
+    keywords = argv._
     console.log('Searching...\n')
     exec('npm search ' + keywords.join(' '), function(err, stdout, stderr) {
       var lines = S(stdout.trim()).lines();
@@ -37,7 +64,6 @@ function processResults(lines){
   for (var i = 0; i < lines.length; ++i) {
     var url = S(lines[i]).left(len).trim().s;
     if (url) {
-      url = util.format(NPM_URL, url);
       packages.push(url);
     }
   }
@@ -46,43 +72,118 @@ function processResults(lines){
 }
 
 function processInfo(packages) {
+  var descWidth = process.stdout.columns - 40;
+  printHeader();
   //console.log(packages)
-  batch(packages).seq().each(function(i, url, next) {
-    //console.log(util.format('Processing %s...',url))
-    request({url: url, json: true}, function(err, resp, body) {
-      if (err) console.log(util.format('Error on %s: %s', url, err.message));
-      if (resp.statusCode !== 200) console.log(util.format('Expected 200 for %s, got %s', url, resp.statusCode))
-      if (!err) {
-        var repo = null
-          , homepage = null;
+  batch(packages).seq().each(function(i, pkg, next) {
+    var url = util.format(NPM_URL, pkg);
+    var pkgInfo = null;
 
-        if (body.repository) repo = body.repository.url;
-        if (body['dist-tags']) {
-          var latest = body['dist-tags'].latest;
-          if (latest && body.versions) {
-            var latestObj = body.versions[latest]
-            if (latestObj) {
-              if (latestObj.homepage && util.isArray(latestObj.homepage) && latestObj.homepage.length > 0) {
-                homepage = latestObj.homepage[0];
-              }
-            }
-          }
-        }
+    if (PACKAGES[pkg])
+      pkgInfo = PACKAGES[pkg]
+    else
+      pkgInfo = {name: pkg, url: url, count: 0, desc: '', repo: '', lastUpdate: (new Date(0).getTime())};
 
-        if (repo)
-          repo = vcsurl(repo);
-        
-        var page = homepage || repo;
-        if (page) {
-          console.log(util.format('  Opening %s...',colors.blue(page)))
-          open(page)
+    if (Date.now() - pkgInfo.lastUpdate > UPDATE_SPAN) {
+      makeRequest(pkgInfo, function(err, pkg) {
+        if (!err) {
+          PACKAGES[pkg.name] = pkg;
+          savePackageDB();
+          doArgAction(pkg, next);
+        } else {
+          DEBUG && console.log(util.format('Error on %s: %s', url, err.message));
+          next();
         }
-      }
-      next();
-    })
+      });
+    } else {
+      doArgAction(pkgInfo, next);
+    }
   }).end(function() {
     console.log('\nDone.')
   })
+}
+
+function doArgAction(pkgInfo, callback) {
+    var cmp = S(argv.gte).toInt() || 0
+      , doIt = (pkgInfo.count >= cmp)
+  
+  if (doIt) {
+    printPackageInfo(pkgInfo)
+    if (argv.browser) open(pkgInfo.repo);
+  }
+  callback();
+}
+
+function makeRequest(pkgInfo, callback) {
+  request(pkgInfo.url, function(err, resp, body) {
+    if (err) return callback(err);
+    if (resp.statusCode !== 200) return callback(new Error(util.format('Expected 200 for %s, got %s', pkgInfo.url, resp.statusCode)));
+
+    var $ = cheerio.load(body)
+      , depCount = 0
+      , elUrl = $("td:contains('github.com')")
+      , elDesc = $('.description')
+      , elDepCount = $("th:contains('Dependents')")
+
+      if (elUrl) {
+        var text = elUrl.text()
+        if (text) {
+          var lines = S(text).trim().lines()
+          if (lines.length > 0)
+            text = lines[0].trim();
+          if (text)
+            pkgInfo.repo = vcsurl(text);
+        }
+      } else {
+        return callback(new Error('No repo url.')); //what's the point?
+      }
+
+      if (elDesc) {
+        pkgInfo.desc = elDesc.text();
+      } else {
+        return callback(new Error('No description.')); //must not be good enough of a package
+      }
+
+      if (elDepCount) {
+        //depCount = ~~elDepCount.text();
+        var pos1 = body.indexOf('Dependents') + 'Dependents'.length;
+        var pos2 = body.indexOf(')', pos1);
+        //console.log('\n\n\nPOS: ' + pos1 + ' ' + pos2 + '\n\n')
+        if (pos1 > 9 && pos2 > 0) {
+          var countText = body.substring(pos1, pos2);
+          pkgInfo.count = ~~countText.trim().substring(1); //cut off first '('
+        }
+      }
+
+      pkgInfo.lastUpdate = Date.now();
+      callback(null, pkgInfo);
+  });
+}
+
+function printHeader() {
+  console.log(colors.bold(S('name').padLeft(PKG_WIDTH) + S('deps').padLeft(DEP_WIDTH) + '    ' + S('description')));
+}
+
+function printPackageInfo(pkgInfo) {
+  var ctext = colors.magenta(S('[' + pkgInfo.count + ']').padLeft(DEP_WIDTH))
+  console.log(colors.cyan(S(pkgInfo.name).padLeft(PKG_WIDTH)) + ctext + ' : ' + ' ' + S(pkgInfo.desc).truncate(DESC_WIDTH))
+}
+
+function loadPackageDB(callback) {
+  fs.readJSONFile(DATA_FILE, function(err, data){
+    if (err)
+      PACKAGES = {}
+    else
+      PACKAGES = data;
+    callback();
+  });
+}
+
+function savePackageDB() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirs(DATA_DIR);
+  }
+  fs.writeJSONFile(DATA_FILE, PACKAGES, noop);
 }
 
 function displayHelp() {
@@ -92,12 +193,23 @@ function displayHelp() {
     console.log("");
     console.log(colors.bold("  npm-research [%s]"), packageConf.version);
     console.log("");
-    console.log("    Usage: npm-research [some search terms...]");
+    console.log("    Usage: npm-research [some search terms...] [options]");
     console.log("");
+    console.log("    Options:")
+    console.log("")
+    console.log("      -b, --browser   Open repos in browser")
+    console.log("      -g, --gte [num]   Only display/open those who have a dependents greater than specified number i.e. more popular")
+    console.log("")
 
   } else {
     console.log("Can't locate package.json. Can't display help.");
   }
 }
 
-main()
+loadPackageDB(function() {
+  main()
+});
+
+
+
+
