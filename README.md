@@ -68,10 +68,19 @@ Perform research, but filter out projects that have less than `1` depenedent. Op
     Done.
 
 
+
+Misc.
+----
+
+After each NPM package information is downloaded, it is then cached for two days. This information can be found in `$HOME/.npm-research/packages.json`.
+
+
+
 Todo
 ----
 
-Unfortunately `npm search` is slows balls and TJ Holowaychuk's `npm-search` isn't working right now. Maybe leverage Google?
+Unfortunately `npm search` is slows balls and TJ Holowaychuk's `npm-search` isn't working right now. Maybe leverage Google search to speed things up?
+
 
 
 License
