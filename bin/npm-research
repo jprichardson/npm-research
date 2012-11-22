@@ -75,7 +75,7 @@ function processInfo(packages) {
   var descWidth = process.stdout.columns - 40;
   printHeader();
   //console.log(packages)
-  batch(packages).seq().each(function(i, pkg, next) {
+  batch(packages).par(5).each(function(i, pkg, next) {
     var url = util.format(NPM_URL, pkg);
     var pkgInfo = null;
 
@@ -153,6 +153,16 @@ function makeRequest(pkgInfo, callback) {
           var countText = body.substring(pos1, pos2);
           pkgInfo.count = ~~countText.trim().substring(1); //cut off first '('
         }
+      }
+
+      if (pkgInfo.count === 0) { //no parseable count, let's try something else
+        var deps = elDepCount.siblings().first().html()
+        if (deps) { //ya, sometimes i feel like cheerio isn't working, maybe it's just me
+          depText = $(deps).text()
+          if (depText)
+            pkgInfo.count = depText.split(',').length
+        }
+        //console.log(deps)
       }
 
       pkgInfo.lastUpdate = Date.now();
